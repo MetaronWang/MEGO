@@ -1,6 +1,9 @@
 
 # MEGO
 
+This repo is the source code for the paper _MoEs as general-purpose optimizer_. This page will tell you how to config the environment 
+for the source code and run it.
+
 ## Quick Start
 
 ### Setup Environment
@@ -62,10 +65,14 @@ cmake -DCMAKE_BUILD_TYPE=Release && make
 
 
 ### Dataset
+There are 6 problem classes in this repo and 3 of them are generated according to the existing datasets. The datasets of 
+anchor selection problem and complementary influence maximization problem have upload into the folder `data/dataset`, the dataset 
+of compiler arguments optimization problem need to be downloaded by `ck` package which is installed while seting the environment.
+
 #### Anchor Selection Problem
 The dataset of ETH3D for Anchor Selection Problem is located in the folder **data/dataset/anchor_selection**.
 
-#### Anchor Selection Problem
+#### Complementary Influence Maximization Problem
 The dataset of Facebook/Wiki for Complementary Influence Maximization Problem is located in the folder **data/dataset/com_imp**.
 
 #### Compiler Arguments Optimization 
@@ -98,7 +105,7 @@ python experiment_problem.py
 
 ```shell
 cd $MEGO/src
-python experiment_problem.py
+python experiment_build_surrogate.py
 ```
 
 ### Build Decoder Mapping from Training Instance to Test Instance
