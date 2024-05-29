@@ -1,8 +1,8 @@
 
 # MEGO
 
-This repo is the source code for the paper _MoEs as general-purpose optimizer_. This page will tell you how to config the environment 
-for the source code and run it.
+This repo is the source code for the paper _Learning Mixture-of-Experts for General-Purpose Black-Box Discrete Optimization_. 
+This page will tell you how to config the environment for the source code and run it.
 
 ## Quick Start
 
