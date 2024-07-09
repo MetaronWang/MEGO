@@ -28,7 +28,7 @@ cd $MEGO #The root path of the project
 wget https://cmake.org/files/v3.22/cmake-3.22.4.tar.gz
 tar xf cmake-3.22.4.tar.gz
 cd cmake-3.22.4
-./bootstrap
+./bootstrap --parallel=48
 make -j 255
 sudo make install 
 
@@ -48,7 +48,6 @@ wget https://archives.boost.io/release/1.84.0/source/boost_1_84_0.tar.gz
 tar xf boost_1_84_0.tar.gz
 cd boost_1_84_0
 ./bootstrap.sh
-./b2 toolset=gcc threading=multi
 sudo ./b2 install --prefix=/usr toolset=gcc threading=multi
 
 # Update Dynamic Lib list 
