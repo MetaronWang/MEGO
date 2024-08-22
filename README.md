@@ -20,7 +20,7 @@ pip install -r requirements.txt
 ```shell
 # You need to set the $MEGO as the root path of this project
 # export MEGO="The Path of this project on your server"
-
+# gcc we used is 11.2/11.4
 # Install some package by apt
 sudo apt install make gcc g++ libeigen3-dev libssl-dev swig git libboost-dev libasio-dev
 # Download and install cmake>=3.14
