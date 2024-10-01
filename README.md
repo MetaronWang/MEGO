@@ -1,7 +1,7 @@
 
 # MEGO
 
-This repo is the source code for the paper _Learning Mixture-of-Experts for General-Purpose Black-Box Discrete Optimization_. 
+This repo is the source code for the paper _Off-The-Shelf Discrete Optimization Across Disciplines with a Learned Mixture-of-Experts Approach_. 
 This page will tell you how to config the environment for the source code and run it.
 
 ## Quick Start
