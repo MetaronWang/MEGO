@@ -118,7 +118,7 @@ class SurrogateVAE(Surrogate):
         Will a single z be enough ti compute the expectation
         for the loss??
         :param mu: (Tensor) Mean of the latent Gaussian
-        :param logvar: (Tensor) Standard deviation of the latent Gaussian
+        :param logvar: (Tensor) Log variance of the latent Gaussian
         :return:
         """
         std = torch.exp(0.5 * logvar)
