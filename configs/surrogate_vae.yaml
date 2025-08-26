@@ -1,0 +1,29 @@
+model_params:
+  name: 'SurrogateVAE'
+  in_dim: 10
+  latent_dim_coefficient: 4
+  hidden_dims: [ 64, 128, 128, 64 ]
+  mlp_dims: [ 128, 256, 512, 1024, 512, 256, 128 ]
+  lamBDa: 1
+  gamma: 0.0025
+  margin: 4
+
+data_params:
+  data_path: "Data/"
+  train_batch_size: 1024
+  val_batch_size: 1024
+  num_workers: 0
+
+exp_params:
+  LR: 0.0005
+  weight_decay: 0.0
+  manual_seed: 1088
+
+trainer_params:
+  gpus: [ 1 ]
+  max_epochs: 3000
+
+logging_params:
+  save_dir: "../logs/"
+  manual_seed: 1088
+  name: 'SurrogateAE'

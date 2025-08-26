@@ -1,0 +1,24 @@
+model_params:
+  name: 'SurrogateMLP'
+  in_dim: 10
+  mlp_dims: [ 128 ]
+
+data_params:
+  data_path: "Data/"
+  train_batch_size: 1024
+  val_batch_size: 1024
+  num_workers: 4
+
+exp_params:
+  LR: 0.001
+  weight_decay: 0.0
+  manual_seed: 1088
+
+trainer_params:
+  gpus: [ 1 ]
+  max_epochs: 500
+
+logging_params:
+  save_dir: "logs/"
+  manual_seed: 1265
+  name: 'SurrogateAE'
