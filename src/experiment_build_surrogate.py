@@ -61,6 +61,7 @@ def train_task(x: NpArray, y: NpArray, problem_instance: BaseProblem, problem_in
     best_val_loss = np.inf
     for epoch in range(int(config['trainer_params']['max_epochs'])):
         loss_records = {}
+        model.train()
         for solution, quality in train_dataloader:
             optimizer.zero_grad()
             train_loss = model.loss_function(solution.to(device), quality.to(device))
@@ -70,13 +71,15 @@ def train_task(x: NpArray, y: NpArray, problem_instance: BaseProblem, problem_in
                 if key not in loss_records:
                     loss_records[key] = []
                 loss_records[key].append(train_loss[key] if key != "loss" else train_loss[key].cpu().detach().numpy())
-        for solution, quality in valid_dataloader:
-            valid_loss = model.loss_function(solution.to(device), quality.to(device))
-            for key in valid_loss.keys():
-                if "val_{}".format(key) not in loss_records:
-                    loss_records["val_{}".format(key)] = []
-                loss_records["val_{}".format(key)].append(
-                    valid_loss[key] if key != "loss" else valid_loss[key].cpu().detach().numpy())
+        model.eval()
+        with torch.no_grad():
+            for solution, quality in valid_dataloader:
+                valid_loss = model.loss_function(solution.to(device), quality.to(device))
+                for key in valid_loss.keys():
+                    if "val_{}".format(key) not in loss_records:
+                        loss_records["val_{}".format(key)] = []
+                    loss_records["val_{}".format(key)].append(
+                        valid_loss[key] if key != "loss" else valid_loss[key].cpu().detach().numpy())
         if np.mean(loss_records['val_loss']) < best_val_loss:
             best_val_loss = np.mean(loss_records['val_loss'])
             torch.save(model.state_dict(), Path(log_path, "best_model.pt"))

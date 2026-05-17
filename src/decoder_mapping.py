@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 from itertools import chain
@@ -14,7 +15,8 @@ from torch.utils.tensorboard import SummaryWriter
 from src.experiment_build_surrogate import all_model, Surrogate, BaseProblem
 from src.experiment_problem import generate_data_from_problem_instance, load_problem_data, load_problem_instance, \
     load_sample_indices
-from src.regression.dataset import SolutionMappingData, ZeroOneProblemData
+from src.regression.dataset import SolutionMappingData
+from src.regression.surrogate_vae import SurrogateVAE
 from src.types_ import *
 
 
@@ -72,6 +74,7 @@ class DecoderMapping():
             sample_num)
         log_path = Path(config['logging_params']['save_dir'], config["logging_params"]["name"])
         if not os.path.exists(Path(log_path, "best_model.pt")):
+            print("Model Not Exist")
             return False
         with open(Path(log_path, "HyperParam.yaml"), 'r') as file:
             config = yaml.safe_load(file)
@@ -124,7 +127,7 @@ class DecoderMapping():
         np.random.shuffle(indices)
         return ref_input[indices], eval_output[indices]
 
-    def fine_tuning_mapping_decoder(self):
+    def fine_tuning_mapping_decoder(self, save_model: bool = True):
         logging.disable(logging.INFO)
         source_input, target_output = self.generate_cartesian_mapping_data(source_coefficient=self.source_coefficient)
         device = torch.device("cuda:{}".format(self.gpu_index)) if self.gpu_index >= 0 else torch.device("cpu")
@@ -152,7 +155,8 @@ class DecoderMapping():
             os.mkdir(log_path)
         np.save(str(Path(log_path, "source_input.npy")), source_input)
         np.save(str(Path(log_path, "target_output.npy")), target_output)
-        writer = SummaryWriter(str(log_path))
+        if save_model:
+            writer = SummaryWriter(str(log_path))
         yaml.dump(config, open(Path(log_path, "HyperParam.yaml"), "w"))
         for (name, param) in self.mapping_model.named_parameters():
             param.requires_grad = False
@@ -170,10 +174,13 @@ class DecoderMapping():
 
         # epoch_bar = tqdm(range(int(config['trainer_params']['max_epochs'])))
         best_val_loss = np.inf
-        best_state_dict = self.mapping_model.state_dict()
+        best_state_dict = copy.deepcopy(self.mapping_model.state_dict())
         for epoch in range(int(config['trainer_params']['max_epochs'])):
             loss_records = {}
+            self.mapping_model.train()
             for ref_solution, eval_solution in train_dataloader:
+                if ref_solution.size(0) == 1:
+                    continue
                 optimizer.zero_grad()
                 train_loss = self.mapping_model.mapping_loss_function(ref_solution.to(device), eval_solution.to(device))
                 train_loss['loss'].backward()
@@ -183,27 +190,56 @@ class DecoderMapping():
                         loss_records[key] = []
                     loss_records[key].append(
                         train_loss[key] if key != "loss" else train_loss[key].cpu().detach().numpy())
-            for ref_solution, eval_solution in valid_dataloader:
-                valid_loss = self.mapping_model.mapping_loss_function(ref_solution.to(device), eval_solution.to(device))
-                for key in valid_loss.keys():
-                    if "val_{}".format(key) not in loss_records:
-                        loss_records["val_{}".format(key)] = []
-                    loss_records["val_{}".format(key)].append(
-                        valid_loss[key] if key != "loss" else valid_loss[key].cpu().detach().numpy())
+            self.mapping_model.eval()
+            with torch.no_grad():
+                for ref_solution, eval_solution in valid_dataloader:
+                    valid_loss = self.mapping_model.mapping_loss_function(ref_solution.to(device), eval_solution.to(device))
+                    for key in valid_loss.keys():
+                        if "val_{}".format(key) not in loss_records:
+                            loss_records["val_{}".format(key)] = []
+                        loss_records["val_{}".format(key)].append(
+                            valid_loss[key] if key != "loss" else valid_loss[key].cpu().detach().numpy())
             if np.mean(loss_records['val_loss']) < best_val_loss:
                 best_val_loss = np.mean(loss_records['val_loss'])
-                best_state_dict = self.mapping_model.state_dict()
+                best_state_dict = copy.deepcopy(self.mapping_model.state_dict())
 
-            for key in loss_records.keys():
-                writer.add_scalar(key, np.mean(loss_records[key]), epoch)
+            if save_model:
+                for key in loss_records.keys():
+                    writer.add_scalar(key, np.mean(loss_records[key]), epoch)
 
             # epoch_bar.set_description("Epoch {}".format(epoch))
             # epoch_bar.set_postfix_str("MSE {:.5f}".format(np.mean(loss_records['loss'])))
-        torch.save(best_state_dict, Path(log_path, "best_model.pt"))
+        if save_model:
+            torch.save(best_state_dict, Path(log_path, "best_model.pt"))
         print("Finish the surrogate Task of {}_{} to {}_{}".format(self.source_instance.__class__.__name__,
                                                                    self.source_index,
                                                                    self.target_instance.__class__.__name__,
                                                                    self.target_index))
+
+    def get_topk_source_solution(self, k=10, source_sample_num=2000000):
+        device = torch.device("cuda:{}".format(self.gpu_index)) if self.gpu_index >= 0 else torch.device("cpu")
+        self.mapping_model.eval()
+        topk_x, topk_y = [], []
+        for _ in range(source_sample_num // 1024):
+            solution = torch.randint(0, 2, (1024, self.source_instance.dimension), dtype=torch.float32, device=device)
+            for _ in range(1):
+                _, mu, log_var, performance = self.mapping_model(solution)
+                _, indices = torch.topk(performance, k=min(k * 10, 512))
+                source_input = solution[indices].cpu().detach().numpy()
+                performance = performance[indices].cpu().detach().numpy()
+                source_input = (source_input > 0.5).astype(np.int_)
+                source_input, performance = list(source_input) + topk_x, list(performance) + topk_y
+                sort_index, solution_str_set = np.argsort(performance)[::-1], set()
+                topk_x, topk_y = [], []
+                for index in sort_index:
+                    solution_str = "".join([str(bit) for bit in source_input[index]])
+                    if len(solution_str_set) >= k:
+                        break
+                    if solution_str not in solution_str_set:
+                        solution_str_set.add(solution_str)
+                        topk_x.append(source_input[index])
+                        topk_y.append(performance[index])
+        return np.array(topk_x)
 
     def get_topk_target_solution(self, k=10, source_sample_num=2000000) -> NpArray:
         device = torch.device("cuda:{}".format(self.gpu_index)) if self.gpu_index >= 0 else torch.device("cpu")
@@ -218,6 +254,40 @@ class DecoderMapping():
             solution = torch.randint(0, 2, (1024, self.source_instance.dimension), dtype=torch.float32, device=device)
             for _ in range(1):
                 target_output, mu, log_var, performance = self.mapping_model(solution)
+                _, indices = torch.topk(performance, k=min(k * 10, 512))
+                target_output = target_output[indices].cpu().detach().numpy()
+                performance = performance[indices].cpu().detach().numpy()
+                target_output = (target_output > 0.5).astype(np.int_)
+                target_output, performance = list(target_output) + topk_x, list(performance) + topk_y
+                sort_index, solution_str_set = np.argsort(performance)[::-1], set()
+                topk_x, topk_y = [], []
+                for index in sort_index:
+                    solution_str = "".join([str(bit) for bit in target_output[index]])
+                    if len(solution_str_set) >= k:
+                        break
+                    if solution_str not in solution_str_set:
+                        solution_str_set.add(solution_str)
+                        topk_x.append(target_output[index])
+                        topk_y.append(performance[index])
+        return np.array(topk_x)
+
+    def get_topk_target_solution_by_z(self, k=10, source_sample_num=2000000) -> NpArray:
+        device = torch.device("cuda:{}".format(self.gpu_index)) if self.gpu_index >= 0 else torch.device("cpu")
+        topk_x, topk_y = [], []
+        zs = torch.nn.Parameter(torch.randn(1024, self.mapping_model.latent_dim, device=device))
+        self.mapping_model.eval()
+        for param in self.mapping_model.parameters():
+            param.requires_grad = False
+        assert isinstance(self.mapping_model, SurrogateVAE)
+        optimizer = optim.Adam([zs], lr=0.001, weight_decay=1e-4)
+        for _ in range(source_sample_num // 1024):
+            for _ in range(1):
+                performance = self.mapping_model.performance_predictor(zs)
+                target_output = self.mapping_model.decode(zs)
+                loss = -torch.mean(performance)
+                loss.backward()
+                optimizer.step()
+                # print(torch.max(performance), torch.mean(torch.abs(zs)))
                 _, indices = torch.topk(performance, k=min(k * 10, 512))
                 target_output = target_output[indices].cpu().detach().numpy()
                 performance = performance[indices].cpu().detach().numpy()
@@ -270,15 +340,26 @@ class DecoderMapping():
                 exact_mapping_quality[i].append(self.target_instance.evaluate(target_output[i]))
         return np.array([np.mean(exact_mapping_quality[i]) for i in range(k)])
 
-    def evaluate_correlation(self) -> Tuple[float, float]:
+    def evaluate_correlation(self, padding_value: int = 0) -> Tuple[float, float]:
         device = torch.device("cuda:{}".format(self.gpu_index)) if self.gpu_index >= 0 else torch.device("cpu")
         self.source_model.eval()
-        target_x, target_y = self.sample_target_data()
+        target_x, target_y = self.sample_target_data(sample_num=self.sample_num)
         if self.target_dimension > self.source_dimension:
             target_x = np.array([x[:self.source_dimension] for x in target_x])
         elif self.target_dimension < self.source_dimension:
-            target_x = np.pad(target_x, pad_width=((0, 0), (0, self.source_dimension - self.target_dimension)),
-                              mode="constant", constant_values=0)
+            if padding_value is None:
+                target_x = np.concatenate((target_x,
+                                           np.random.randint(0, 2, size=(self.sample_num,
+                                                                         self.source_dimension - self.target_dimension))),
+                                          axis=1)
+            else:
+                if padding_value not in [0, 1]:
+                    padding_value = 0
+                    print("指定的Padding Value错误")
+                target_x = np.pad(target_x,
+                                  pad_width=((0, 0), (0, self.source_dimension - self.target_dimension)),
+                                  mode="constant", constant_values=padding_value)
+        target_x = np.array(target_x, dtype=np.float32)
         _, _, _, predict_y = self.source_model(torch.from_numpy(target_x).to(device))
         predict_y = predict_y.cpu().cpu().detach().numpy()
         rank_y = np.argsort(np.argsort(target_y)[::-1])

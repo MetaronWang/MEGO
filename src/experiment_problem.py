@@ -71,6 +71,19 @@ def generate_problem_instance(ins_dir: str = '../data/problem_instance', train_n
                 open(Path(ins_dir, "valid", "{}_{}_{}".format(problem_type, index, valid_dimension), "problem.pkl"),
                      "wb")
             )
+    for problem_type in valid_problem_types.keys():
+        for index in range(valid_num, valid_num + 3):
+            valid_dimension: int = 20
+            if os.path.exists(Path(ins_dir, "valid", "{}_{}_{}".format(problem_type, index, valid_dimension))):
+                continue
+            print("mkdir", str(Path(ins_dir, "valid", "{}_{}_{}".format(problem_type, index, valid_dimension))))
+            os.mkdir(Path(ins_dir, "valid", "{}_{}_{}".format(problem_type, index, valid_dimension)))
+            problem_instance = valid_problem_types[problem_type](dimension=valid_dimension)
+            pickle.dump(
+                problem_instance,
+                open(Path(ins_dir, "valid", "{}_{}_{}".format(problem_type, index, valid_dimension), "problem.pkl"),
+                     "wb")
+            )
 
 
 def load_problem_instance(problem_dir: Path) -> BaseProblem:
